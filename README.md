@@ -1,0 +1,78 @@
+# LIBRARY WORKOUT
+
+図書館で行った小さな知的活動を、筋トレのワークアウトのような軽さで記録・振り返る静的Webアプリです。成果や達成度は評価せず、「図書館に行った」「本を読んだ」「棚を眺めた」といった活動そのものを残します。
+
+## ローカルで確認する
+
+外部ライブラリやビルド工程はありません。プロジェクトのルートで簡易HTTPサーバーを起動してください。
+
+```bash
+python3 -m http.server 8000
+```
+
+ブラウザで `http://localhost:8000` を開きます。ES Modulesを使用しているため、`index.html` の直接表示ではなくHTTPサーバー経由で確認してください。
+
+## GitHub Pagesで公開する
+
+1. リポジトリをGitHubへpushします。
+2. リポジトリの **Settings → Pages** を開きます。
+3. **Deploy from a branch** を選び、`main` ブランチの `/ (root)` を指定します。
+4. 保存後に表示されるURLへアクセスします。
+
+すべて相対パスで参照しているため、プロジェクトサイト形式のURLでも動作します。
+
+## ファイル構成
+
+```text
+library-workout/
+├── index.html          # 3画面と日別編集シートの構造
+├── css/style.css       # モバイルファーストの外観とアニメーション
+├── js/
+│   ├── app.js          # UI、日付処理、カレンダー、集計
+│   ├── data.js         # ワークアウト種別の定義
+│   └── storage.js      # localStorageの読み書き
+├── assets/logo.svg     # 3本バーのロゴ
+└── README.md
+```
+
+## データ保存
+
+データは外部へ送信せず、利用中のブラウザの `localStorage` にのみ保存します。キー名は次の通りです。
+
+```text
+library-workout-data-v1
+```
+
+保存形式は次のようなバージョン付きJSONです。日付キーはUTCではなく、ユーザー端末のローカル日付から生成します。
+
+```json
+{
+  "version": 1,
+  "entries": {
+    "2026-09-11": {
+      "library": "○○市立中央図書館",
+      "activities": {
+        "visit": 1,
+        "borrow": 3,
+        "browse": 20
+      }
+    }
+  },
+  "libraries": ["○○市立中央図書館"],
+  "settings": {
+    "favorites": ["visit", "borrow", "read", "browse", "lookup"]
+  }
+}
+```
+
+図書館名は各日の活動から独立した `library` として保持します。一度入力した名前は重複を除いて `libraries` 配列の先頭へ移動し、最近使った順に最大12件保存します。候補選択と自由入力のどちらも利用できます。
+
+## 開発用データ
+
+通常画面には表示しない開発用ヘルパーをブラウザのコンソールから利用できます。
+
+```js
+LibraryWorkoutDev.loadSampleData() // 今月のサンプルデータを投入
+LibraryWorkoutDev.clearAllData()   // 保存データを全消去
+LibraryWorkoutDev.exportData()     // 現在のJSONを表示
+```
