@@ -6,16 +6,16 @@
     <meta name="theme-color" content="#ffffff" />
     <meta
       name="description"
-      content="図書館での活動を、軽やかに記録して振り返るWebアプリ。"
+      content="頭のワークアウトに、図書館へ。図書館での活動を気軽に記録して振り返るWebアプリ。"
     />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="LIBRARY WORKOUT" />
-    <meta property="og:description" content="図書館での活動を、軽やかに記録して振り返るWebアプリ。" />
+    <meta property="og:description" content="頭のワークアウトに、図書館へ。図書館での活動を気軽に記録して振り返るWebアプリ。" />
     <meta property="og:url" content="https://yawatosho.github.io/library-workout/" />
     <meta property="og:image" content="https://yawatosho.github.io/library-workout/assets/ogp.png" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="LIBRARY WORKOUT" />
-    <meta name="twitter:description" content="図書館での活動を、軽やかに記録して振り返るWebアプリ。" />
+    <meta name="twitter:description" content="頭のワークアウトに、図書館へ。図書館での活動を気軽に記録して振り返るWebアプリ。" />
     <meta name="twitter:image" content="https://yawatosho.github.io/library-workout/assets/ogp.png" />
     <title>LIBRARY WORKOUT</title>
     <link
@@ -25,7 +25,7 @@
     />
     <link rel="apple-touch-icon" sizes="180x180" href="assets/icon-180.png" />
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="css/style.css?v=6" />
+    <link rel="stylesheet" href="css/style.css?v=9" />
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-J6NS8CCNWN"></script>
     <script>
       window.dataLayer = window.dataLayer || [];
@@ -33,7 +33,7 @@
       gtag("js", new Date());
       gtag("config", "G-J6NS8CCNWN");
     </script>
-    <script type="module" src="js/app.js?v=12"></script>
+    <script type="module" src="js/app.js?v=17"></script>
   </head>
   <body>
     <div class="app-shell">
@@ -51,8 +51,8 @@
       <main id="app-main" tabindex="-1">
         <section class="view is-active" id="today-view" data-view="today" aria-labelledby="today-title">
           <div class="section-heading">
-            <p class="eyebrow">TODAY</p>
             <h1 id="today-title">Today's workout</h1>
+            <p class="workout-concept">Work out your brain at the library.</p>
           </div>
 
           <div class="activity-list" id="primary-activities"></div>
@@ -147,10 +147,10 @@
           <section class="activity-chart" aria-labelledby="chart-title">
             <div class="chart-header">
               <div>
-                <p class="eyebrow">ACTIVITY MIX</p>
-                <h2 id="chart-title">At a glance</h2>
+                <p class="eyebrow">WORKOUT MIX</p>
+                <h2 id="chart-title">Activities this month</h2>
               </div>
-              <p>Days recorded<br />total at right</p>
+              <p>Days active<br />total at right</p>
             </div>
             <div id="activity-bars"></div>
           </section>
@@ -214,7 +214,8 @@
       <div class="help-content">
         <section aria-labelledby="help-about-title">
           <h3 id="help-about-title">ABOUT LIBRARY WORKOUT</h3>
-          <p>図書館で行った小さな活動を、ワークアウトのような軽さで記録するアプリです。成果や達成度ではなく、その日に何をしたかを気軽に残します。</p>
+          <p>体を動かすためにジムへ行くように、頭を動かすために図書館へ。</p>
+          <p>LIBRARY WORKOUTは、図書館での読書、勉強、棚を見ることなどを気軽に記録して振り返るアプリです。</p>
         </section>
         <section aria-labelledby="help-how-title">
           <h3 id="help-how-title">HOW TO USE</h3>
@@ -232,11 +233,10 @@
           <p>ブラウザのデータ削除や端末変更により記録が消えることがあります。必要に応じてSTATS画面のExportからJSONファイルとしてバックアップしてください。Exportしたファイルはご自身で管理してください。</p>
         </section>
         <section class="creator" aria-labelledby="help-creator-title">
-          <h3 id="help-creator-title">CREATOR</h3>
+          <h3 id="help-creator-title">Created by</h3>
           <strong>やわらか図書館学</strong>
-          <p>Created by a university librarian.</p>
           <div class="creator-links" aria-label="作成者リンク">
-            <a href="https://yawatosho.github.io/" target="_blank" rel="noopener noreferrer">Website <span aria-hidden="true">↗</span></a>
+            <a href="https://yawatosho.hateblo.jp/" target="_blank" rel="noopener noreferrer">Website <span aria-hidden="true">↗</span></a>
           </div>
         </section>
       </div>

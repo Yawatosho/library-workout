@@ -1,4 +1,4 @@
-import { workoutTypes, unitLabels, storageKey } from "./data.js?v=12";
+import { workoutTypes, unitLabels, storageKey } from "./data.js?v=15";
 import {
   clearEntry,
   getEntry,
@@ -8,7 +8,7 @@ import {
   replaceData,
   setActivity,
   setLibrary,
-} from "./storage.js?v=12";
+} from "./storage.js?v=15";
 
 const locale = "en-US";
 const today = new Date();
@@ -28,6 +28,7 @@ let toastTimer = null;
 let activeHold = null;
 let helpReturnFocus = null;
 const managedLibraryDates = new Set();
+const enteringLibraryDates = new Set();
 
 const els = {
   headerDate: document.querySelector("#header-date"),
@@ -210,9 +211,9 @@ function toggleVisit(dateKey) {
     showToast("Removed");
   } else {
     setActivity(data, dateKey, dayControllerId, 1);
-    showToast("Visit recorded");
+    showToast("Workout started");
   }
-  rerenderAfterChange(dayControllerId);
+  rerenderAfterChange(dayControllerId, visitOn ? null : dateKey);
 }
 
 function toggleCheckActivity(dateKey, type) {
@@ -252,9 +253,11 @@ function updateActivityRows(dateKey, type) {
   });
 }
 
-function rerenderAfterChange(activityId) {
+function rerenderAfterChange(activityId, enteringLibraryDate = null) {
+  if (enteringLibraryDate) enteringLibraryDates.add(enteringLibraryDate);
   renderAll();
   if (openSheetDate) renderSheet(openSheetDate);
+  if (enteringLibraryDate) enteringLibraryDates.delete(enteringLibraryDate);
   document.querySelectorAll(`[data-activity="${activityId}"]`).forEach((row) => {
     row.classList.add("just-changed");
     if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -269,7 +272,7 @@ function rerenderAfterChange(activityId) {
 function libraryField(dateKey) {
   const entry = getEntry(data, dateKey);
   const wrap = document.createElement("div");
-  wrap.className = "library-field";
+  wrap.className = `library-field${enteringLibraryDates.has(dateKey) ? " is-entering" : ""}`;
   const listId = `libraries-${dateKey}`;
   if (!data.libraries.length) managedLibraryDates.delete(dateKey);
   const managing = managedLibraryDates.has(dateKey);
@@ -287,8 +290,7 @@ function libraryField(dateKey) {
       <div class="recent-libraries">${visibleLibraries.map((name) => managing
         ? `<button type="button" class="saved-library-remove" data-remove-library="${escapeHtml(name)}" aria-label="${escapeHtml(name)}を候補履歴から削除"><span>${escapeHtml(name)}</span><b aria-hidden="true">×</b></button>`
         : `<button type="button" data-library="${escapeHtml(name)}">${escapeHtml(name)}</button>`).join("")}</div>
-    </div>` : ""}
-    <p class="field-note">You can leave this blank.</p>`;
+    </div>` : ""}`;
 
   const input = wrap.querySelector("input");
   const commit = () => {
@@ -451,6 +453,20 @@ function renderYearTrend() {
   }).join("");
 }
 
+function statsPeriodDayCount() {
+  if (statsMode === "month") {
+    const year = statsMonthCursor.getFullYear();
+    const month = statsMonthCursor.getMonth();
+    const isCurrentMonth = year === today.getFullYear() && month === today.getMonth();
+    return isCurrentMonth ? today.getDate() : new Date(year, month + 1, 0).getDate();
+  }
+  if (statsYearCursor === today.getFullYear()) {
+    const elapsed = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()) - Date.UTC(statsYearCursor, 0, 1);
+    return Math.floor(elapsed / 86400000) + 1;
+  }
+  return new Date(statsYearCursor, 1, 29).getMonth() === 1 ? 366 : 365;
+}
+
 function renderStats() {
   const isMonth = statsMode === "month";
   const label = isMonth
@@ -477,12 +493,13 @@ function renderStats() {
 
   els.yearTrend.hidden = isMonth;
   if (!isMonth) renderYearTrend();
-  els.chartTitle.textContent = isMonth ? "This month at a glance" : "This year at a glance";
+  els.chartTitle.textContent = isMonth ? "Activities this month" : "Activities this year";
   const activeTypes = workoutTypes.filter((type) => activityDays[type.id] > 0);
-  const max = Math.max(1, ...activeTypes.map((type) => activityDays[type.id]));
+  const periodDays = statsPeriodDayCount();
   els.activityBars.innerHTML = activeTypes.length ? activeTypes.map((type) => {
     const recordedDays = activityDays[type.id];
-    return `<div class="bar-row" aria-label="${type.shortLabel}: ${recordedDays} ${recordedDays === 1 ? "day" : "days"}, total ${formatAggregateValue(type, totals[type.id])}"><span>${type.shortLabel}</span><div class="bar-track" title="${recordedDays} ${recordedDays === 1 ? "day" : "days"}"><i style="--bar-width:${Math.max(8, Math.round((recordedDays / max) * 100))}%"></i></div><strong>${formatAggregateValue(type, totals[type.id])}</strong></div>`;
+    const barWidth = Math.min(100, (recordedDays / periodDays) * 100).toFixed(2);
+    return `<div class="bar-row" aria-label="${type.shortLabel}: ${recordedDays} ${recordedDays === 1 ? "day" : "days"}, total ${formatAggregateValue(type, totals[type.id])}"><span>${type.shortLabel}</span><div class="bar-track" title="${recordedDays} ${recordedDays === 1 ? "day" : "days"}"><i style="--bar-width:${barWidth}%"></i></div><strong>${formatAggregateValue(type, totals[type.id])}</strong></div>`;
   }).join("") : `<p class="empty-copy">Activities recorded in this ${statsMode} will take shape here.</p>`;
 
   const libraryRows = Object.entries(libraries).sort((a, b) => b[1] - a[1]);
