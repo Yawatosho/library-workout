@@ -1,22 +1,52 @@
-import { storageKey } from "./data.js";
+import { storageKey, workoutTypes } from "./data.js?v=8";
+
+const workoutTypeById = new Map(workoutTypes.map((type) => [type.id, type]));
 
 const emptyData = () => ({
   version: 1,
   entries: {},
   libraries: [],
-  settings: { favorites: ["visit", "borrow", "read", "browse", "lookup"] },
+  settings: { favorites: ["visit", "borrow", "read", "browse", "study"] },
 });
+
+function normalizeData(source) {
+  const result = emptyData();
+  if (!source || source.version !== 1 || typeof source.entries !== "object" || source.entries === null || Array.isArray(source.entries)) {
+    return result;
+  }
+
+  Object.entries(source.entries).forEach(([dateKey, entry]) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey) || !entry || typeof entry !== "object") return;
+    const activities = {};
+    if (entry.activities && typeof entry.activities === "object" && !Array.isArray(entry.activities)) {
+      Object.entries(entry.activities).forEach(([id, rawValue]) => {
+        const type = workoutTypeById.get(id);
+        if (!type) return;
+        const value = Number(rawValue);
+        if (!Number.isFinite(value) || value <= 0) return;
+        activities[id] = type.inputType === "check" ? 1 : Math.max(type.step, Math.round(value / type.step) * type.step);
+      });
+    }
+    const library = typeof entry.library === "string" ? entry.library.trim().slice(0, 80) : "";
+    if (Object.keys(activities).length || library) result.entries[dateKey] = { library, activities };
+  });
+
+  result.libraries = Array.isArray(source.libraries)
+    ? [...new Set(source.libraries.filter((item) => typeof item === "string").map((item) => item.trim()).filter(Boolean))].slice(0, 12)
+    : [];
+  if (source.settings && Array.isArray(source.settings.favorites)) {
+    result.settings.favorites = source.settings.favorites.filter((item) => workoutTypeById.has(item));
+  }
+  return result;
+}
 
 export function loadData() {
   try {
     const parsed = JSON.parse(localStorage.getItem(storageKey));
     if (!parsed || parsed.version !== 1 || typeof parsed.entries !== "object") return emptyData();
-    return {
-      ...emptyData(),
-      ...parsed,
-      entries: parsed.entries || {},
-      libraries: Array.isArray(parsed.libraries) ? parsed.libraries : [],
-    };
+    const normalized = normalizeData(parsed);
+    if (JSON.stringify(normalized) !== JSON.stringify(parsed)) saveData(normalized);
+    return normalized;
   } catch {
     return emptyData();
   }
@@ -33,12 +63,18 @@ export function getEntry(data, dateKey) {
 export function setActivity(data, dateKey, activityId, value) {
   const current = getEntry(data, dateKey);
   const activities = { ...current.activities };
-  if (value > 0) activities[activityId] = value;
+  const type = workoutTypeById.get(activityId);
+  if (value > 0 && type) activities[activityId] = type.inputType === "check" ? 1 : value;
   else delete activities[activityId];
 
   const next = { ...current, activities };
   if (!next.library && Object.keys(activities).length === 0) delete data.entries[dateKey];
   else data.entries[dateKey] = next;
+  saveData(data);
+}
+
+export function clearEntry(data, dateKey) {
+  delete data.entries[dateKey];
   saveData(data);
 }
 
@@ -59,7 +95,11 @@ export function setLibrary(data, dateKey, library) {
 }
 
 export function replaceData(nextData) {
-  const data = { ...emptyData(), ...nextData, version: 1 };
+  const data = normalizeData(nextData);
   saveData(data);
   return data;
+}
+
+export function isValidImportData(value) {
+  return Boolean(value && value.version === 1 && typeof value.entries === "object" && value.entries !== null && !Array.isArray(value.entries));
 }
