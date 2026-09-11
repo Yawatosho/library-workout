@@ -1,4 +1,4 @@
-import { storageKey, workoutTypes } from "./data.js?v=8";
+import { storageKey, workoutTypes } from "./data.js?v=10";
 
 const workoutTypeById = new Map(workoutTypes.map((type) => [type.id, type]));
 
@@ -24,9 +24,11 @@ function normalizeData(source) {
         if (!type) return;
         const value = Number(rawValue);
         if (!Number.isFinite(value) || value <= 0) return;
-        activities[id] = type.inputType === "check" ? 1 : Math.max(type.step, Math.round(value / type.step) * type.step);
+        const normalized = type.inputType === "check" ? 1 : Math.max(type.step, Math.round(value / type.step) * type.step);
+        activities[id] = type.max ? Math.min(type.max, normalized) : normalized;
       });
     }
+    if (Object.keys(activities).length && !activities.visit) activities.visit = 1;
     const library = typeof entry.library === "string" ? entry.library.trim().slice(0, 80) : "";
     if (Object.keys(activities).length || library) result.entries[dateKey] = { library, activities };
   });
@@ -64,7 +66,10 @@ export function setActivity(data, dateKey, activityId, value) {
   const current = getEntry(data, dateKey);
   const activities = { ...current.activities };
   const type = workoutTypeById.get(activityId);
-  if (value > 0 && type) activities[activityId] = type.inputType === "check" ? 1 : value;
+  if (value > 0 && type) {
+    const normalized = type.inputType === "check" ? 1 : Math.max(type.step, Math.round(value / type.step) * type.step);
+    activities[activityId] = type.max ? Math.min(type.max, normalized) : normalized;
+  }
   else delete activities[activityId];
 
   const next = { ...current, activities };
@@ -91,6 +96,11 @@ export function setLibrary(data, dateKey, library) {
   } else {
     delete data.entries[dateKey];
   }
+  saveData(data);
+}
+
+export function removeSavedLibrary(data, libraryName) {
+  data.libraries = data.libraries.filter((name) => name !== libraryName);
   saveData(data);
 }
 

@@ -1,13 +1,14 @@
-import { workoutTypes, unitLabels, storageKey } from "./data.js?v=8";
+import { workoutTypes, unitLabels, storageKey } from "./data.js?v=10";
 import {
   clearEntry,
   getEntry,
   isValidImportData,
   loadData,
+  removeSavedLibrary,
   replaceData,
   setActivity,
   setLibrary,
-} from "./storage.js?v=8";
+} from "./storage.js?v=10";
 
 const locale = "en-US";
 const today = new Date();
@@ -25,9 +26,12 @@ let openSheetDate = null;
 let returnFocus = null;
 let toastTimer = null;
 let activeHold = null;
+let helpReturnFocus = null;
+const managedLibraryDates = new Set();
 
 const els = {
   headerDate: document.querySelector("#header-date"),
+  openHelp: document.querySelector("#open-help"),
   primary: document.querySelector("#primary-activities"),
   secondary: document.querySelector("#secondary-activities"),
   more: document.querySelector("#more-workouts"),
@@ -58,6 +62,9 @@ const els = {
   sheet: document.querySelector("#day-sheet"),
   sheetTitle: document.querySelector("#sheet-title"),
   sheetContent: document.querySelector("#sheet-content"),
+  helpBackdrop: document.querySelector("#help-backdrop"),
+  helpSheet: document.querySelector("#help-sheet"),
+  closeHelp: document.querySelector("#close-help"),
   toast: document.querySelector("#save-toast"),
 };
 
@@ -84,7 +91,7 @@ function formatValue(type, value) {
 }
 
 function formatAggregateValue(type, value) {
-  if (type.inputType === "check") return String(value);
+  if (type.inputType === "check") return `${value} ${value === 1 ? "day" : "days"}`;
   return formatValue(type, value);
 }
 
@@ -94,9 +101,15 @@ function escapeHtml(value) {
 
 function stopHold() {
   if (!activeHold) return;
-  clearTimeout(activeHold.delay);
-  clearInterval(activeHold.interval);
+  const hold = activeHold;
+  clearTimeout(hold.delay);
+  clearInterval(hold.interval);
   activeHold = null;
+  if (hold.dirty) {
+    const value = getEntry(data, hold.dateKey).activities[hold.type.id] || 0;
+    showToast(value ? "Recorded" : "Removed");
+    rerenderAfterChange(hold.type.id);
+  }
 }
 
 function attachStepperButton(button, dateKey, type, delta) {
@@ -115,23 +128,32 @@ function attachStepperButton(button, dateKey, type, delta) {
   button.addEventListener("pointerdown", (event) => {
     if (button.disabled || event.button !== 0) return;
     stopHold();
+    const hold = { delay: null, interval: null, startedAt: performance.now(), dirty: false, dateKey, type };
     const pulse = () => {
       const current = getEntry(data, dateKey).activities[type.id] || 0;
-      if (delta < 0 && current <= 0) {
+      if ((delta < 0 && current <= 0) || (delta > 0 && current >= type.max)) {
         stopHold();
         return;
       }
+      const elapsed = performance.now() - hold.startedAt;
+      const multiplier = elapsed >= 2400 ? 6 : elapsed >= 1000 ? 3 : 1;
       repeated = true;
-      changeActivity(dateKey, type, delta);
+      hold.dirty = changeActivity(dateKey, type, Math.sign(delta) * type.step * multiplier, true) || hold.dirty;
     };
-    const hold = { delay: null, interval: null };
     activeHold = hold;
     hold.delay = setTimeout(() => {
       if (activeHold !== hold) return;
       pulse();
-      hold.interval = setInterval(pulse, 160);
+      hold.interval = setInterval(pulse, 180);
     }, 430);
   });
+}
+
+function activityCopyMarkup(type, compact) {
+  const icon = type.primary && !compact && type.icon
+    ? `<span class="activity-icon" aria-hidden="true"><svg viewBox="0 0 24 24">${type.icon}</svg></span>`
+    : "";
+  return `<div class="activity-leading">${icon}<div class="activity-copy"><span class="activity-name">${type.shortLabel}</span><span class="activity-description">${type.label}</span></div></div>`;
 }
 
 function activityRow(type, dateKey, compact = false) {
@@ -142,14 +164,12 @@ function activityRow(type, dateKey, compact = false) {
   const row = document.createElement("div");
   row.className = `activity-row${value ? " has-value" : ""}${compact ? " is-compact" : ""}${locked ? " is-locked" : ""}`;
   row.dataset.activity = type.id;
+  row.dataset.date = dateKey;
 
   if (type.inputType === "check") {
     if (!type.controlsDay) {
       row.innerHTML = `
-        <div class="activity-copy">
-          <span class="activity-name">${type.shortLabel}</span>
-          <span class="activity-description">${type.label}</span>
-        </div>
+        ${activityCopyMarkup(type, compact)}
         <button type="button" class="check-toggle${value ? " is-on" : ""}" aria-pressed="${Boolean(value)}" aria-label="${value ? `${type.label}の記録を解除` : `${type.label}を記録`}" ${locked ? "disabled" : ""}>
           <span aria-hidden="true">${value ? "✓" : "+"}</span>
         </button>`;
@@ -157,10 +177,7 @@ function activityRow(type, dateKey, compact = false) {
       return row;
     }
     row.innerHTML = `
-      <div class="activity-copy">
-        <span class="activity-name">${type.shortLabel}</span>
-        <span class="activity-description">${type.label}</span>
-      </div>
+      ${activityCopyMarkup(type, compact)}
       <button type="button" class="visit-toggle${visitOn ? " is-on" : ""}" aria-pressed="${visitOn}" aria-label="${visitOn ? "図書館への訪問記録を解除" : "図書館への訪問を記録"}">
         <span aria-hidden="true">${visitOn ? "✓" : "+"}</span>${visitOn ? "記録済み" : "記録する"}
       </button>`;
@@ -169,14 +186,11 @@ function activityRow(type, dateKey, compact = false) {
   }
 
   row.innerHTML = `
-    <div class="activity-copy">
-      <span class="activity-name">${type.shortLabel}</span>
-      <span class="activity-description">${type.label}</span>
-    </div>
+    ${activityCopyMarkup(type, compact)}
     <div class="stepper" aria-label="${type.label}">
       <button type="button" class="step-button minus" aria-label="${type.label}を減らす" ${locked || value === 0 ? "disabled" : ""}>−</button>
       <output aria-live="polite">${formatValue(type, value)}</output>
-      <button type="button" class="step-button plus" aria-label="${type.label}を増やす" ${locked ? "disabled" : ""}>＋</button>
+      <button type="button" class="step-button plus" aria-label="${type.label}を増やす" ${locked || value >= type.max ? "disabled" : ""}>＋</button>
     </div>`;
 
   attachStepperButton(row.querySelector(".minus"), dateKey, type, -type.step);
@@ -211,16 +225,31 @@ function toggleCheckActivity(dateKey, type) {
   rerenderAfterChange(type.id);
 }
 
-function changeActivity(dateKey, type, delta) {
+function changeActivity(dateKey, type, delta, deferRender = false) {
   if (isFutureDate(dateKey)) return;
   const entry = getEntry(data, dateKey);
   if (type.inputType !== "quantity" || entry.activities[dayControllerId] !== 1) return;
   const current = entry.activities[type.id] || 0;
-  const next = Math.max(0, current + delta);
-  if (next === current) return;
+  const next = Math.min(type.max, Math.max(0, current + delta));
+  if (next === current) return false;
   setActivity(data, dateKey, type.id, next);
+  if (deferRender) {
+    updateActivityRows(dateKey, type);
+    return true;
+  }
   showToast(next ? "Recorded" : "Removed");
   rerenderAfterChange(type.id);
+  return true;
+}
+
+function updateActivityRows(dateKey, type) {
+  const value = getEntry(data, dateKey).activities[type.id] || 0;
+  document.querySelectorAll(`[data-date="${dateKey}"][data-activity="${type.id}"]`).forEach((row) => {
+    row.classList.toggle("has-value", value > 0);
+    row.querySelector("output").textContent = formatValue(type, value);
+    row.querySelector(".minus").disabled = value <= 0;
+    row.querySelector(".plus").disabled = value >= type.max;
+  });
 }
 
 function rerenderAfterChange(activityId) {
@@ -242,6 +271,8 @@ function libraryField(dateKey) {
   const wrap = document.createElement("div");
   wrap.className = "library-field";
   const listId = `libraries-${dateKey}`;
+  const managing = managedLibraryDates.has(dateKey);
+  const visibleLibraries = managing ? data.libraries : data.libraries.slice(0, 3);
   wrap.innerHTML = `
     <label for="library-${dateKey}">Which library? <span>Optional</span></label>
     <div class="library-input-wrap">
@@ -250,7 +281,12 @@ function libraryField(dateKey) {
       ${entry.library ? `<button type="button" class="clear-library" aria-label="図書館名を削除">×</button>` : ""}
     </div>
     <datalist id="${listId}">${data.libraries.map((name) => `<option value="${escapeHtml(name)}"></option>`).join("")}</datalist>
-    ${data.libraries.length ? `<div class="recent-libraries"><span>Recent</span>${data.libraries.slice(0, 3).map((name) => `<button type="button" data-library="${escapeHtml(name)}">${escapeHtml(name)}</button>`).join("")}</div>` : ""}
+    ${data.libraries.length ? `<div class="recent-library-area${managing ? " is-managing" : ""}">
+      <div class="recent-library-heading"><span>Recent</span><button type="button" class="manage-libraries">${managing ? "Done" : "Manage"}</button></div>
+      <div class="recent-libraries">${visibleLibraries.map((name) => managing
+        ? `<button type="button" class="saved-library-remove" data-remove-library="${escapeHtml(name)}" aria-label="${escapeHtml(name)}を候補履歴から削除"><span>${escapeHtml(name)}</span><b aria-hidden="true">×</b></button>`
+        : `<button type="button" data-library="${escapeHtml(name)}">${escapeHtml(name)}</button>`).join("")}</div>
+    </div>` : ""}
     <p class="field-note">You can leave this blank.</p>`;
 
   const input = wrap.querySelector("input");
@@ -271,6 +307,17 @@ function libraryField(dateKey) {
   wrap.querySelectorAll("[data-library]").forEach((button) => button.addEventListener("click", () => {
     input.value = button.dataset.library;
     commit();
+  }));
+  wrap.querySelector(".manage-libraries")?.addEventListener("click", () => {
+    if (managing) managedLibraryDates.delete(dateKey); else managedLibraryDates.add(dateKey);
+    renderAll();
+    if (openSheetDate) renderSheet(openSheetDate);
+  });
+  wrap.querySelectorAll("[data-remove-library]").forEach((button) => button.addEventListener("click", () => {
+    removeSavedLibrary(data, button.dataset.removeLibrary);
+    showToast("History removed");
+    renderAll();
+    if (openSheetDate) renderSheet(openSheetDate);
   }));
   return wrap;
 }
@@ -366,14 +413,20 @@ function entriesForStats() {
 
 function aggregateEntries(entries) {
   const totals = Object.fromEntries(workoutTypes.map((type) => [type.id, 0]));
+  const activityDays = Object.fromEntries(workoutTypes.map((type) => [type.id, 0]));
   const libraries = {};
   let days = 0;
   entries.forEach(([, entry]) => {
     if (activityVariety(entry) > 0) days += 1;
-    Object.entries(entry.activities || {}).forEach(([id, value]) => { if (id in totals) totals[id] += value; });
+    Object.entries(entry.activities || {}).forEach(([id, value]) => {
+      if (id in totals && value > 0) {
+        totals[id] += value;
+        activityDays[id] += 1;
+      }
+    });
     if (entry.library && entry.activities?.[dayControllerId]) libraries[entry.library] = (libraries[entry.library] || 0) + 1;
   });
-  return { totals, libraries, days };
+  return { totals, activityDays, libraries, days };
 }
 
 function renderYearTrend() {
@@ -381,13 +434,19 @@ function renderYearTrend() {
     const prefix = `${statsYearCursor}-${String(month + 1).padStart(2, "0")}`;
     return Object.entries(data.entries).filter(([key, entry]) => key <= todayKey && key.startsWith(prefix) && activityVariety(entry) > 0).length;
   });
-  const max = Math.max(1, ...counts);
-  els.monthBars.innerHTML = counts.map((count, month) => `
-    <div class="month-bar-row">
+  const monthIsFuture = (month) => statsYearCursor > today.getFullYear()
+    || (statsYearCursor === today.getFullYear() && month > today.getMonth());
+  const pastCounts = counts.filter((_, month) => !monthIsFuture(month));
+  const max = Math.max(1, ...pastCounts);
+  els.monthBars.innerHTML = counts.map((count, month) => {
+    const future = monthIsFuture(month);
+    return `
+    <div class="month-bar-row${future ? " is-future" : ""}">
       <span>${new Date(2000, month, 1).toLocaleDateString(locale, { month: "short" }).toUpperCase()}</span>
-      <div class="month-bar-track"><i style="--bar-width:${count ? Math.max(5, Math.round((count / max) * 100)) : 0}%"></i></div>
-      <strong>${count}</strong>
-    </div>`).join("");
+      <div class="month-bar-track">${future ? "" : `<i style="--bar-width:${count ? Math.max(5, Math.round((count / max) * 100)) : 0}%"></i>`}</div>
+      <strong>${future ? "—" : count}</strong>
+    </div>`;
+  }).join("");
 }
 
 function renderStats() {
@@ -408,7 +467,7 @@ function renderStats() {
     button.tabIndex = active ? 0 : -1;
   });
 
-  const { totals, libraries, days } = aggregateEntries(entriesForStats());
+  const { totals, activityDays, libraries, days } = aggregateEntries(entriesForStats());
   els.workoutDays.textContent = days;
   els.workoutDaysCard.setAttribute("aria-label", `${label}の活動日数 ${days}日`);
   const featured = ["visit", "borrow", "read", "browse", "study"].map((id) => workoutTypes.find((type) => type.id === id));
@@ -417,11 +476,11 @@ function renderStats() {
   els.yearTrend.hidden = isMonth;
   if (!isMonth) renderYearTrend();
   els.chartTitle.textContent = isMonth ? "This month at a glance" : "This year at a glance";
-  const activeTypes = workoutTypes.filter((type) => totals[type.id] > 0);
-  const max = Math.max(1, ...activeTypes.map((type) => type.unit === "minutes" ? totals[type.id] / type.step : totals[type.id]));
+  const activeTypes = workoutTypes.filter((type) => activityDays[type.id] > 0);
+  const max = Math.max(1, ...activeTypes.map((type) => activityDays[type.id]));
   els.activityBars.innerHTML = activeTypes.length ? activeTypes.map((type) => {
-    const normalized = type.unit === "minutes" ? totals[type.id] / type.step : totals[type.id];
-    return `<div class="bar-row"><span>${type.shortLabel}</span><div class="bar-track"><i style="--bar-width:${Math.max(8, Math.round((normalized / max) * 100))}%"></i></div><strong>${formatAggregateValue(type, totals[type.id])}</strong></div>`;
+    const recordedDays = activityDays[type.id];
+    return `<div class="bar-row" aria-label="${type.shortLabel}: ${recordedDays} ${recordedDays === 1 ? "day" : "days"}, total ${formatAggregateValue(type, totals[type.id])}"><span>${type.shortLabel}</span><div class="bar-track" title="${recordedDays} ${recordedDays === 1 ? "day" : "days"}"><i style="--bar-width:${Math.max(8, Math.round((recordedDays / max) * 100))}%"></i></div><strong>${formatAggregateValue(type, totals[type.id])}</strong></div>`;
   }).join("") : `<p class="empty-copy">Activities recorded in this ${statsMode} will take shape here.</p>`;
 
   const libraryRows = Object.entries(libraries).sort((a, b) => b[1] - a[1]);
@@ -471,6 +530,40 @@ function closeDaySheet() {
     openSheetDate = null;
     returnFocus?.focus();
   }, 220);
+}
+
+function openHelp() {
+  helpReturnFocus = document.activeElement;
+  els.helpBackdrop.hidden = false;
+  els.helpSheet.hidden = false;
+  document.body.classList.add("sheet-open");
+  requestAnimationFrame(() => {
+    els.helpBackdrop.classList.add("is-open");
+    els.helpSheet.classList.add("is-open");
+    els.closeHelp.focus();
+  });
+}
+
+function closeHelp() {
+  els.helpBackdrop.classList.remove("is-open");
+  els.helpSheet.classList.remove("is-open");
+  document.body.classList.remove("sheet-open");
+  setTimeout(() => {
+    els.helpBackdrop.hidden = true;
+    els.helpSheet.hidden = true;
+    helpReturnFocus?.focus();
+    helpReturnFocus = null;
+  }, 220);
+}
+
+function trapHelpFocus(event) {
+  if (event.key !== "Tab" || els.helpSheet.hidden) return;
+  const focusable = [...els.helpSheet.querySelectorAll("button, a[href], [tabindex]:not([tabindex='-1'])")];
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
 }
 
 function showToast(message, duration = 950, isError = false) {
@@ -548,10 +641,17 @@ document.querySelector("#import-data").addEventListener("click", () => els.impor
 els.importInput.addEventListener("change", () => { if (els.importInput.files?.[0]) importData(els.importInput.files[0]); });
 document.querySelector("#close-sheet").addEventListener("click", closeDaySheet);
 els.backdrop.addEventListener("click", closeDaySheet);
+els.openHelp.addEventListener("click", openHelp);
+els.closeHelp.addEventListener("click", closeHelp);
+els.helpBackdrop.addEventListener("click", closeHelp);
 document.addEventListener("pointerup", stopHold);
 document.addEventListener("pointercancel", stopHold);
 document.addEventListener("visibilitychange", () => { if (document.hidden) stopHold(); });
-document.addEventListener("keydown", (event) => { if (event.key === "Escape" && openSheetDate) closeDaySheet(); });
+document.addEventListener("keydown", (event) => {
+  trapHelpFocus(event);
+  if (event.key === "Escape" && !els.helpSheet.hidden) closeHelp();
+  else if (event.key === "Escape" && openSheetDate) closeDaySheet();
+});
 
 els.headerDate.textContent = today.toLocaleDateString(locale, { weekday: "short", month: "short", day: "numeric" }).toUpperCase();
 renderAll();
@@ -586,7 +686,8 @@ function registerWebMcp() {
     execute(input) {
       const type = workoutTypes.find((item) => item.id === input.activity);
       if (!type || !/^\d{4}-\d{2}-\d{2}$/.test(input.date) || isFutureDate(input.date) || !Number.isFinite(input.value) || input.value < 0) throw new Error("Invalid activity record");
-      const value = type.inputType === "check" ? (input.value > 0 ? 1 : 0) : Math.round(input.value / type.step) * type.step;
+      const normalized = type.inputType === "check" ? (input.value > 0 ? 1 : 0) : Math.round(input.value / type.step) * type.step;
+      const value = type.max ? Math.min(type.max, normalized) : normalized;
       const entry = getEntry(data, input.date);
       if (!type.controlsDay && entry.activities[dayControllerId] !== 1) throw new Error("Record VISIT first");
       if (type.controlsDay && value === 0 && activityVariety(entry) > 1) throw new Error("Remove dependent activities in the interface first");
