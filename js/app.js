@@ -1,4 +1,4 @@
-import { workoutTypes, unitLabels, storageKey } from "./data.js?v=10";
+import { workoutTypes, unitLabels, storageKey } from "./data.js?v=12";
 import {
   clearEntry,
   getEntry,
@@ -8,7 +8,7 @@ import {
   replaceData,
   setActivity,
   setLibrary,
-} from "./storage.js?v=10";
+} from "./storage.js?v=12";
 
 const locale = "en-US";
 const today = new Date();
@@ -271,6 +271,7 @@ function libraryField(dateKey) {
   const wrap = document.createElement("div");
   wrap.className = "library-field";
   const listId = `libraries-${dateKey}`;
+  if (!data.libraries.length) managedLibraryDates.delete(dateKey);
   const managing = managedLibraryDates.has(dateKey);
   const visibleLibraries = managing ? data.libraries : data.libraries.slice(0, 3);
   wrap.innerHTML = `
@@ -315,6 +316,7 @@ function libraryField(dateKey) {
   });
   wrap.querySelectorAll("[data-remove-library]").forEach((button) => button.addEventListener("click", () => {
     removeSavedLibrary(data, button.dataset.removeLibrary);
+    if (!data.libraries.length) managedLibraryDates.delete(dateKey);
     showToast("History removed");
     renderAll();
     if (openSheetDate) renderSheet(openSheetDate);

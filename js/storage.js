@@ -1,4 +1,4 @@
-import { storageKey, workoutTypes } from "./data.js?v=10";
+import { storageKey, workoutTypes } from "./data.js?v=12";
 
 const workoutTypeById = new Map(workoutTypes.map((type) => [type.id, type]));
 
@@ -28,8 +28,8 @@ function normalizeData(source) {
         activities[id] = type.max ? Math.min(type.max, normalized) : normalized;
       });
     }
-    if (Object.keys(activities).length && !activities.visit) activities.visit = 1;
     const library = typeof entry.library === "string" ? entry.library.trim().slice(0, 80) : "";
+    if ((Object.keys(activities).length || library) && !activities.visit) activities.visit = 1;
     if (Object.keys(activities).length || library) result.entries[dateKey] = { library, activities };
   });
 

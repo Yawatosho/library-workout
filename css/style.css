@@ -308,7 +308,8 @@ main { outline: 0; }
 .help-content ol { margin: 0; padding-left: 1.35rem; }
 .creator > strong { display: block; margin-bottom: 4px; font-size: 1rem; }
 .creator-links { margin-top: 13px; display: flex; gap: 9px; }
-.creator-links span { padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); font-size: .72rem; }
+.creator-links > a { padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--green-dark); font-size: .72rem; font-weight: 700; text-decoration: none; }
+.creator-links > a:hover { border-color: var(--green); }
 .save-toast { position: fixed; z-index: 100; left: 50%; bottom: calc(var(--nav-height) + 14px + env(safe-area-inset-bottom)); padding: 9px 14px; border-radius: 999px; background: var(--ink); color: var(--white); font-size: .72rem; font-weight: 700; opacity: 0; transform: translate(-50%, 10px); pointer-events: none; transition: opacity 160ms ease, transform 160ms ease; }.save-toast.is-visible { opacity: 1; transform: translate(-50%, 0); }
 .save-toast.is-error { background: #9a3f3f; }
 
