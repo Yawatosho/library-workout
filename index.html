@@ -25,7 +25,7 @@
     />
     <link rel="apple-touch-icon" sizes="180x180" href="assets/icon-180.png" />
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="css/style.css?v=9" />
+    <link rel="stylesheet" href="css/style.css?v=11" />
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-J6NS8CCNWN"></script>
     <script>
       window.dataLayer = window.dataLayer || [];
@@ -33,7 +33,7 @@
       gtag("js", new Date());
       gtag("config", "G-J6NS8CCNWN");
     </script>
-    <script type="module" src="js/app.js?v=17"></script>
+    <script type="module" src="js/app.js?v=20"></script>
   </head>
   <body>
     <div class="app-shell">
@@ -53,6 +53,10 @@
           <div class="section-heading">
             <h1 id="today-title">Today's workout</h1>
             <p class="workout-concept">Work out your brain at the library.</p>
+            <div class="today-summary">
+              <p class="today-summary-count" id="today-summary-count">No activities yet</p>
+              <p class="today-summary-values" id="today-summary-values" hidden></p>
+            </div>
           </div>
 
           <div class="activity-list" id="primary-activities"></div>
@@ -66,23 +70,13 @@
             <div class="activity-list secondary-list" id="secondary-activities"></div>
           </details>
 
-          <section class="daily-summary" aria-labelledby="summary-title">
-            <div>
-              <p class="eyebrow" id="summary-title">TODAY</p>
-              <p class="summary-count" id="today-summary-count">No activities yet</p>
-            </div>
-            <div class="summary-mark" id="today-summary-mark" aria-hidden="true">
-              <i></i><i></i><i></i>
-            </div>
-            <p class="summary-library" id="today-summary-library" hidden></p>
-          </section>
         </section>
 
         <section class="view" id="calendar-view" data-view="calendar" aria-labelledby="calendar-title" hidden>
           <div class="section-heading calendar-heading">
             <div>
               <p class="eyebrow">HISTORY</p>
-              <h1 id="calendar-title">Calendar</h1>
+              <h1 id="calendar-title" tabindex="-1">Calendar</h1>
             </div>
             <div class="month-controls" aria-label="月を移動">
               <button class="icon-button" id="previous-month" type="button" aria-label="前の月">←</button>
@@ -150,7 +144,7 @@
                 <p class="eyebrow">WORKOUT MIX</p>
                 <h2 id="chart-title">Activities this month</h2>
               </div>
-              <p>Days active<br />total at right</p>
+              <p>Activity volume<br />total at right</p>
             </div>
             <div id="activity-bars"></div>
           </section>
@@ -198,7 +192,7 @@
         </div>
         <button class="close-button" id="close-sheet" type="button" aria-label="閉じる">×</button>
       </header>
-      <div class="sheet-content" id="sheet-content"></div>
+      <div class="sheet-content" id="sheet-content" tabindex="-1"></div>
     </section>
 
     <div class="sheet-backdrop" id="help-backdrop" hidden></div>
@@ -228,9 +222,9 @@
         </section>
         <section aria-labelledby="help-privacy-title">
           <h3 id="help-privacy-title">DATA &amp; PRIVACY</h3>
-          <p>入力した図書館名や活動記録は、この端末のブラウザ内（localStorage）に保存され、運営者のサーバーには保存されません。</p>
+          <p>入力した図書館名や活動記録は、この端末のブラウザ内（localStorage）に保存されます。通常はブラウザを閉じても記録は残り、運営者のサーバーには保存されません。</p>
           <p>サイトの利用状況を把握するためGoogle Analyticsを使用しています。ページ閲覧などのアクセス情報がGoogleへ送信される場合がありますが、入力した図書館名や具体的な活動内容をAnalyticsへ送信することはありません。</p>
-          <p>ブラウザのデータ削除や端末変更により記録が消えることがあります。必要に応じてSTATS画面のExportからJSONファイルとしてバックアップしてください。Exportしたファイルはご自身で管理してください。</p>
+          <p>ブラウザのサイトデータ削除や端末変更などによって記録が失われる場合があります。必要に応じてSTATS画面のExportからJSONファイルとしてバックアップしてください。Exportしたファイルはご自身で管理してください。</p>
         </section>
         <section class="creator" aria-labelledby="help-creator-title">
           <h3 id="help-creator-title">Created by</h3>

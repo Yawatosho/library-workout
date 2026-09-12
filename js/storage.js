@@ -1,4 +1,4 @@
-import { storageKey, workoutTypes } from "./data.js?v=15";
+import { storageKey, workoutTypes } from "./data.js?v=16";
 
 const workoutTypeById = new Map(workoutTypes.map((type) => [type.id, type]));
 

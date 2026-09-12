@@ -1,4 +1,4 @@
-import { workoutTypes, unitLabels, storageKey } from "./data.js?v=15";
+import { workoutTypes, unitLabels } from "./data.js?v=16";
 import {
   clearEntry,
   getEntry,
@@ -11,9 +11,9 @@ import {
 } from "./storage.js?v=15";
 
 const locale = "en-US";
-const today = new Date();
-const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-const todayKey = toDateKey(today);
+let today = new Date();
+let todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+let todayKey = toDateKey(today);
 const dayControllerType = workoutTypes.find((type) => type.controlsDay);
 const dayControllerId = dayControllerType.id;
 let data = loadData();
@@ -23,7 +23,9 @@ let statsMode = "month";
 let statsMonthCursor = new Date(today.getFullYear(), today.getMonth(), 1);
 let statsYearCursor = today.getFullYear();
 let openSheetDate = null;
-let returnFocus = null;
+let daySheetMode = "view";
+let daySheetReturnDate = null;
+let dayEditMoreOpen = false;
 let toastTimer = null;
 let activeHold = null;
 let helpReturnFocus = null;
@@ -38,9 +40,9 @@ const els = {
   more: document.querySelector("#more-workouts"),
   moreCount: document.querySelector("#more-count"),
   summaryCount: document.querySelector("#today-summary-count"),
-  summaryLibrary: document.querySelector("#today-summary-library"),
-  summaryMark: document.querySelector("#today-summary-mark"),
+  summaryValues: document.querySelector("#today-summary-values"),
   calendarMonth: document.querySelector("#calendar-month"),
+  calendarTitle: document.querySelector("#calendar-title"),
   calendarGrid: document.querySelector("#calendar-grid"),
   previousMonth: document.querySelector("#previous-month"),
   nextMonth: document.querySelector("#next-month"),
@@ -63,6 +65,7 @@ const els = {
   sheet: document.querySelector("#day-sheet"),
   sheetTitle: document.querySelector("#sheet-title"),
   sheetContent: document.querySelector("#sheet-content"),
+  closeSheet: document.querySelector("#close-sheet"),
   helpBackdrop: document.querySelector("#help-backdrop"),
   helpSheet: document.querySelector("#help-sheet"),
   closeHelp: document.querySelector("#close-help"),
@@ -79,6 +82,33 @@ function toDateKey(date) {
 function fromDateKey(key) {
   const [y, m, d] = key.split("-").map(Number);
   return new Date(y, m - 1, d);
+}
+
+function renderHeaderDate() {
+  els.headerDate.textContent = today.toLocaleDateString(locale, { weekday: "short", month: "short", day: "numeric" }).toUpperCase();
+}
+
+function refreshToday() {
+  const nextToday = new Date();
+  const nextTodayStart = new Date(nextToday.getFullYear(), nextToday.getMonth(), nextToday.getDate());
+  const nextTodayKey = toDateKey(nextToday);
+  if (nextTodayKey === todayKey) return false;
+
+  const calendarWasCurrent = calendarCursor.getFullYear() === today.getFullYear() && calendarCursor.getMonth() === today.getMonth();
+  const statsMonthWasCurrent = statsMonthCursor.getFullYear() === today.getFullYear() && statsMonthCursor.getMonth() === today.getMonth();
+  const statsYearWasCurrent = statsYearCursor === today.getFullYear();
+
+  today = nextToday;
+  todayStart = nextTodayStart;
+  todayKey = nextTodayKey;
+  if (calendarWasCurrent) calendarCursor = new Date(today.getFullYear(), today.getMonth(), 1);
+  if (statsMonthWasCurrent) statsMonthCursor = new Date(today.getFullYear(), today.getMonth(), 1);
+  if (statsYearWasCurrent) statsYearCursor = today.getFullYear();
+
+  renderHeaderDate();
+  renderAll();
+  if (openSheetDate) renderSheet(openSheetDate);
+  return true;
 }
 
 function isFutureDate(dateKey) {
@@ -251,6 +281,7 @@ function updateActivityRows(dateKey, type) {
     row.querySelector(".minus").disabled = value <= 0;
     row.querySelector(".plus").disabled = value >= type.max;
   });
+  if (dateKey === todayKey) renderTodaySummary();
 }
 
 function rerenderAfterChange(activityId, enteringLibraryDate = null) {
@@ -346,12 +377,17 @@ function renderToday() {
   els.more.classList.toggle("is-locked", entry.activities[dayControllerId] !== 1);
   if (extraCount) els.more.open = true;
 
+  renderTodaySummary(entry);
+}
+
+function renderTodaySummary(entry = getEntry(data, todayKey)) {
   const count = activityVariety(entry);
   els.summaryCount.textContent = count ? `${count} ${count === 1 ? "activity" : "activities"}` : "No activities yet";
-  const summaryLibrary = entry.activities[dayControllerId] ? entry.library : "";
-  els.summaryLibrary.textContent = summaryLibrary || "";
-  els.summaryLibrary.hidden = !summaryLibrary;
-  els.summaryMark.classList.toggle("is-active", count > 0);
+  const values = workoutTypes
+    .filter((type) => type.primary && type.inputType === "quantity" && (entry.activities[type.id] || 0) > 0)
+    .map((type) => `${type.shortLabel} ${formatValue(type, entry.activities[type.id])}`);
+  els.summaryValues.textContent = values.join(" · ");
+  els.summaryValues.hidden = values.length === 0;
 }
 
 function activityVariety(entry) {
@@ -453,20 +489,6 @@ function renderYearTrend() {
   }).join("");
 }
 
-function statsPeriodDayCount() {
-  if (statsMode === "month") {
-    const year = statsMonthCursor.getFullYear();
-    const month = statsMonthCursor.getMonth();
-    const isCurrentMonth = year === today.getFullYear() && month === today.getMonth();
-    return isCurrentMonth ? today.getDate() : new Date(year, month + 1, 0).getDate();
-  }
-  if (statsYearCursor === today.getFullYear()) {
-    const elapsed = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()) - Date.UTC(statsYearCursor, 0, 1);
-    return Math.floor(elapsed / 86400000) + 1;
-  }
-  return new Date(statsYearCursor, 1, 29).getMonth() === 1 ? 366 : 365;
-}
-
 function renderStats() {
   const isMonth = statsMode === "month";
   const label = isMonth
@@ -494,12 +516,13 @@ function renderStats() {
   els.yearTrend.hidden = isMonth;
   if (!isMonth) renderYearTrend();
   els.chartTitle.textContent = isMonth ? "Activities this month" : "Activities this year";
-  const activeTypes = workoutTypes.filter((type) => activityDays[type.id] > 0);
-  const periodDays = statsPeriodDayCount();
+  const activeTypes = workoutTypes.filter((type) => totals[type.id] > 0);
   els.activityBars.innerHTML = activeTypes.length ? activeTypes.map((type) => {
-    const recordedDays = activityDays[type.id];
-    const barWidth = Math.min(100, (recordedDays / periodDays) * 100).toFixed(2);
-    return `<div class="bar-row" aria-label="${type.shortLabel}: ${recordedDays} ${recordedDays === 1 ? "day" : "days"}, total ${formatAggregateValue(type, totals[type.id])}"><span>${type.shortLabel}</span><div class="bar-track" title="${recordedDays} ${recordedDays === 1 ? "day" : "days"}"><i style="--bar-width:${barWidth}%"></i></div><strong>${formatAggregateValue(type, totals[type.id])}</strong></div>`;
+    const value = totals[type.id];
+    const scale = type.chartScaleMonth * (isMonth ? 1 : 12);
+    const barWidth = ((value / (value + scale)) * 100).toFixed(2);
+    const formattedValue = formatAggregateValue(type, value);
+    return `<div class="bar-row" aria-label="${type.shortLabel}: ${formattedValue}"><span>${type.shortLabel}</span><div class="bar-track" title="${formattedValue}"><i style="--bar-width:${barWidth}%"></i></div><strong>${formattedValue}</strong></div>`;
   }).join("") : `<p class="empty-copy">Activities recorded in this ${statsMode} will take shape here.</p>`;
 
   const libraryRows = Object.entries(libraries).sort((a, b) => b[1] - a[1]);
@@ -517,7 +540,9 @@ function moveStatsPeriod(delta) {
 function openDaySheet(dateKey, trigger) {
   if (isFutureDate(dateKey)) return;
   openSheetDate = dateKey;
-  returnFocus = trigger;
+  daySheetMode = "view";
+  daySheetReturnDate = dateKey;
+  dayEditMoreOpen = false;
   renderSheet(dateKey);
   els.backdrop.hidden = false;
   els.sheet.hidden = false;
@@ -525,21 +550,99 @@ function openDaySheet(dateKey, trigger) {
   requestAnimationFrame(() => {
     els.backdrop.classList.add("is-open");
     els.sheet.classList.add("is-open");
-    document.querySelector("#close-sheet").focus();
+    els.closeSheet.focus();
   });
 }
 
 function renderSheet(dateKey) {
   const date = fromDateKey(dateKey);
   els.sheetTitle.textContent = date.toLocaleDateString(locale, { month: "short", day: "numeric", year: "numeric" }).toUpperCase();
-  const rows = document.createElement("div");
-  rows.className = "activity-list sheet-activities";
-  appendActivityRows(rows, workoutTypes, dateKey, true);
-  els.sheetContent.replaceChildren(rows);
+  els.sheetContent.setAttribute("aria-label", daySheetMode === "view" ? "閲覧モード" : "編集モード");
+  if (daySheetMode === "edit") renderDayEdit(dateKey); else renderDayView(dateKey);
+}
+
+function renderDayView(dateKey) {
+  const entry = getEntry(data, dateKey);
+  const view = document.createElement("div");
+  view.className = "day-view";
+  if (entry.library) {
+    const library = document.createElement("p");
+    library.className = "day-view-library";
+    library.textContent = entry.library;
+    view.append(library);
+  }
+
+  const activeTypes = workoutTypes.filter((type) => (entry.activities[type.id] || 0) > 0);
+  if (activeTypes.length) {
+    const list = document.createElement("div");
+    list.className = "day-view-list";
+    activeTypes.forEach((type) => {
+      const value = entry.activities[type.id];
+      const row = document.createElement("div");
+      row.className = "day-view-row";
+      row.innerHTML = `${activityCopyMarkup(type, true)}${type.inputType === "quantity" ? `<strong>${formatValue(type, value)}</strong>` : ""}`;
+      list.append(row);
+    });
+    view.append(list);
+  } else {
+    const empty = document.createElement("p");
+    empty.className = "empty-copy day-view-empty";
+    empty.textContent = "No workout recorded.";
+    view.append(empty);
+  }
+
+  const actions = document.createElement("div");
+  actions.className = "day-sheet-actions";
+  actions.innerHTML = '<button class="day-mode-button" type="button">Edit</button>';
+  actions.querySelector("button").addEventListener("click", () => {
+    daySheetMode = "edit";
+    renderSheet(dateKey);
+    els.sheetContent.focus({ preventScroll: true });
+  });
+  view.append(actions);
+  els.sheetContent.replaceChildren(view);
+}
+
+function renderDayEdit(dateKey) {
+  const entry = getEntry(data, dateKey);
+  const edit = document.createElement("div");
+  edit.className = "day-edit";
+
+  const primary = workoutTypes.filter((type) => type.primary);
+  const primaryRows = document.createElement("div");
+  primaryRows.className = "activity-list sheet-activities";
+  appendActivityRows(primaryRows, primary, dateKey, true);
+  edit.append(primaryRows);
+
+  const secondary = workoutTypes.filter((type) => !type.primary);
+  const extraCount = secondary.filter((type) => entry.activities[type.id]).length;
+  const more = document.createElement("details");
+  more.className = `more-panel${entry.activities[dayControllerId] === 1 ? "" : " is-locked"}`;
+  more.open = dayEditMoreOpen || extraCount > 0;
+  more.innerHTML = `<summary><span class="summary-plus" aria-hidden="true">＋</span><span>Add workout</span><span class="more-count">${extraCount ? `${extraCount} active` : `${secondary.length} options`}</span></summary>`;
+  const secondaryRows = document.createElement("div");
+  secondaryRows.className = "activity-list secondary-list";
+  appendActivityRows(secondaryRows, secondary, dateKey, true);
+  more.append(secondaryRows);
+  more.addEventListener("toggle", () => { dayEditMoreOpen = more.open; });
+  edit.append(more);
+
+  const actions = document.createElement("div");
+  actions.className = "day-sheet-actions";
+  actions.innerHTML = '<button class="day-mode-button" type="button">Done</button>';
+  actions.querySelector("button").addEventListener("click", () => {
+    stopHold();
+    daySheetMode = "view";
+    renderSheet(dateKey);
+    els.sheetContent.focus({ preventScroll: true });
+  });
+  edit.append(actions);
+  els.sheetContent.replaceChildren(edit);
 }
 
 function closeDaySheet() {
   stopHold();
+  const focusDate = daySheetReturnDate;
   els.backdrop.classList.remove("is-open");
   els.sheet.classList.remove("is-open");
   document.body.classList.remove("sheet-open");
@@ -547,7 +650,10 @@ function closeDaySheet() {
     els.backdrop.hidden = true;
     els.sheet.hidden = true;
     openSheetDate = null;
-    returnFocus?.focus();
+    daySheetMode = "view";
+    daySheetReturnDate = null;
+    const target = focusDate ? els.calendarGrid.querySelector(`[data-date="${focusDate}"]`) : null;
+    (target || els.calendarTitle).focus({ preventScroll: true });
   }, 220);
 }
 
@@ -575,9 +681,10 @@ function closeHelp() {
   }, 220);
 }
 
-function trapHelpFocus(event) {
-  if (event.key !== "Tab" || els.helpSheet.hidden) return;
-  const focusable = [...els.helpSheet.querySelectorAll("button, a[href], [tabindex]:not([tabindex='-1'])")];
+function trapDialogFocus(event, dialog) {
+  if (event.key !== "Tab" || dialog.hidden) return;
+  const focusable = [...dialog.querySelectorAll("button:not([disabled]), input:not([disabled]), a[href], summary, [tabindex]:not([tabindex='-1'])")]
+    .filter((element) => element.getClientRects().length > 0);
   if (!focusable.length) return;
   const first = focusable[0];
   const last = focusable[focusable.length - 1];
@@ -594,6 +701,7 @@ function showToast(message, duration = 950, isError = false) {
 }
 
 function exportData() {
+  refreshToday();
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -658,62 +766,22 @@ els.nextStatsPeriod.addEventListener("click", () => { if (!els.nextStatsPeriod.d
 document.querySelector("#export-data").addEventListener("click", exportData);
 document.querySelector("#import-data").addEventListener("click", () => els.importInput.click());
 els.importInput.addEventListener("change", () => { if (els.importInput.files?.[0]) importData(els.importInput.files[0]); });
-document.querySelector("#close-sheet").addEventListener("click", closeDaySheet);
+els.closeSheet.addEventListener("click", closeDaySheet);
 els.backdrop.addEventListener("click", closeDaySheet);
 els.openHelp.addEventListener("click", openHelp);
 els.closeHelp.addEventListener("click", closeHelp);
 els.helpBackdrop.addEventListener("click", closeHelp);
 document.addEventListener("pointerup", stopHold);
 document.addEventListener("pointercancel", stopHold);
-document.addEventListener("visibilitychange", () => { if (document.hidden) stopHold(); });
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) stopHold(); else refreshToday();
+});
 document.addEventListener("keydown", (event) => {
-  trapHelpFocus(event);
+  if (!els.helpSheet.hidden) trapDialogFocus(event, els.helpSheet);
+  else if (!els.sheet.hidden) trapDialogFocus(event, els.sheet);
   if (event.key === "Escape" && !els.helpSheet.hidden) closeHelp();
   else if (event.key === "Escape" && openSheetDate) closeDaySheet();
 });
 
-els.headerDate.textContent = today.toLocaleDateString(locale, { weekday: "short", month: "short", day: "numeric" }).toUpperCase();
+renderHeaderDate();
 renderAll();
-
-function sampleData() {
-  const sample = { version: 1, entries: {}, libraries: ["中央図書館", "大学図書館", "まちの図書室"], settings: { favorites: ["visit", "borrow", "read", "browse", "study"] } };
-  for (let offset = 0; offset < 370; offset += 1) {
-    if (![0, 2, 5, 8, 13, 21, 34, 55, 89, 144, 233, 365].includes(offset)) continue;
-    const date = new Date(today.getFullYear(), today.getMonth(), today.getDate() - offset);
-    sample.entries[toDateKey(date)] = {
-      library: offset % 3 === 0 ? "中央図書館" : offset % 3 === 2 ? "大学図書館" : "",
-      activities: { visit: 1, read: 15 + (offset % 4) * 10, browse: 10 + (offset % 3) * 5, study: 20 + (offset % 5) * 10, ...(offset % 2 ? { borrow: 2 } : { lookup: 1 }), ...(offset % 5 === 0 ? { search: 1 } : {}) },
-    };
-  }
-  return sample;
-}
-
-window.LibraryWorkoutDev = {
-  loadSampleData() { data = replaceData(sampleData()); renderAll(); return `Sample data saved to ${storageKey}`; },
-  clearAllData() { localStorage.removeItem(storageKey); data = loadData(); renderAll(); return "All local data cleared"; },
-  exportData() { return JSON.stringify(data, null, 2); },
-};
-
-function registerWebMcp() {
-  if (!document.modelContext?.registerTool) return;
-  document.modelContext.registerTool({
-    name: "record_library_activity",
-    title: "Record library activity",
-    description: "Record one library workout activity for today or a past local calendar date. A visit must be recorded before other activities.",
-    inputSchema: { type: "object", properties: { date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" }, activity: { type: "string", enum: workoutTypes.map((type) => type.id) }, value: { type: "number", minimum: 0 } }, required: ["date", "activity", "value"], additionalProperties: false },
-    annotations: { readOnlyHint: false, untrustedContentHint: false },
-    execute(input) {
-      const type = workoutTypes.find((item) => item.id === input.activity);
-      if (!type || !/^\d{4}-\d{2}-\d{2}$/.test(input.date) || isFutureDate(input.date) || !Number.isFinite(input.value) || input.value < 0) throw new Error("Invalid activity record");
-      const normalized = type.inputType === "check" ? (input.value > 0 ? 1 : 0) : Math.round(input.value / type.step) * type.step;
-      const value = type.max ? Math.min(type.max, normalized) : normalized;
-      const entry = getEntry(data, input.date);
-      if (!type.controlsDay && entry.activities[dayControllerId] !== 1) throw new Error("Record VISIT first");
-      if (type.controlsDay && value === 0 && activityVariety(entry) > 1) throw new Error("Remove dependent activities in the interface first");
-      if (type.controlsDay && value === 0) clearEntry(data, input.date); else setActivity(data, input.date, input.activity, value);
-      renderAll();
-      return { date: input.date, activity: input.activity, value };
-    },
-  });
-}
-registerWebMcp();
