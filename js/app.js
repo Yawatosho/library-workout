@@ -1,4 +1,4 @@
-import { workoutTypes, unitLabels } from "./data.js?v=16";
+import { workoutTypes, unitLabels } from "./data.js?v=17";
 import {
   clearEntry,
   getEntry,
