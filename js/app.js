@@ -324,6 +324,7 @@ function libraryField(dateKey) {
     </div>` : ""}`;
 
   const input = wrap.querySelector("input");
+  let isComposing = false;
   const commit = () => {
     setLibrary(data, dateKey, input.value);
     showToast(input.value.trim() ? "Library saved" : "Library removed");
@@ -331,8 +332,13 @@ function libraryField(dateKey) {
     if (openSheetDate) renderSheet(openSheetDate);
   };
   input.addEventListener("change", commit);
+  input.addEventListener("compositionstart", () => { isComposing = true; });
+  input.addEventListener("compositionend", () => { isComposing = false; });
   input.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") { event.preventDefault(); input.blur(); }
+    if (event.key !== "Enter") return;
+    if (event.isComposing || isComposing || event.keyCode === 229) return;
+    event.preventDefault();
+    input.blur();
   });
   wrap.querySelector(".clear-library")?.addEventListener("click", () => {
     input.value = "";
